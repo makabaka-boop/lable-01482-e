@@ -751,6 +751,14 @@ class UIManager {
             modal.classList.add('active');
             this.activeModal = modalId;
             
+            // Clear stdin input when opening input modal
+            if (modalId === 'input-modal') {
+                const stdinInput = document.getElementById('stdin-input');
+                if (stdinInput) {
+                    stdinInput.value = '';
+                }
+            }
+            
             // Focus first input
             const input = modal.querySelector('input, select, textarea');
             if (input) {

@@ -8,6 +8,7 @@ class CompilerRuntime {
         this.pyodide = null;
         this.isPyodideReady = false;
         this.isRunning = false;
+        this.isStopping = false;
         this.abortController = null;
         this.onOutput = null;
         this.onError = null;
@@ -15,6 +16,7 @@ class CompilerRuntime {
         this.onStatusChange = null;
         this.pythonStdout = [];
         this.pythonStderr = [];
+        this.interruptBuffer = null;
     }
 
     /**
@@ -25,6 +27,16 @@ class CompilerRuntime {
         
         try {
             this.updateStatus('正在加载 Python 运行时...');
+            
+            // Create interrupt buffer for stopping execution (if available)
+            try {
+                if (typeof SharedArrayBuffer !== 'undefined') {
+                    this.interruptBuffer = new Int32Array(new SharedArrayBuffer(4));
+                }
+            } catch (e) {
+                console.warn('SharedArrayBuffer not available, interrupt functionality may be limited');
+                this.interruptBuffer = null;
+            }
             
             this.pyodide = await loadPyodide({
                 indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/',
@@ -41,6 +53,11 @@ class CompilerRuntime {
                     }
                 }
             });
+            
+            // Set up interrupt buffer if available
+            if (this.pyodide.setInterruptBuffer) {
+                this.pyodide.setInterruptBuffer(this.interruptBuffer);
+            }
             
             // Install commonly used packages
             this.updateStatus('正在加载 Python 包...');
@@ -129,6 +146,11 @@ class CompilerRuntime {
         this.pythonStdout = [];
         this.pythonStderr = [];
         
+        // Reset interrupt buffer
+        if (this.interruptBuffer) {
+            Atomics.store(this.interruptBuffer, 0, 0);
+        }
+        
         try {
             // Setup stdin
             if (stdin) {
@@ -180,10 +202,14 @@ sys.stdin = StdinWrapper(_stdin_lines)
                 executionTime: Math.round(endTime - startTime)
             };
         } catch (error) {
+            // Check if it was interrupted
+            const wasInterrupted = error.message.includes('KeyboardInterrupt') || 
+                                   error.message.includes('interrupted');
+            
             return {
-                success: false,
+                success: wasInterrupted,
                 output: this.pythonStdout.join('\n'),
-                error: error.message,
+                error: wasInterrupted ? '执行已中断' : error.message,
                 executionTime: 0
             };
         }
@@ -341,13 +367,36 @@ sys.stdin = StdinWrapper(_stdin_lines)
         }
         
         if (this.pyodide && this.isRunning) {
-            // Pyodide doesn't have a direct way to stop execution
-            // We'll need to reload it for a clean stop
-            this.pyodide.runPython('raise KeyboardInterrupt()');
+            this.isStopping = true;
+            
+            try {
+                // Try interrupt buffer first (most reliable)
+                if (this.interruptBuffer && this.pyodide.setInterruptBuffer) {
+                    Atomics.store(this.interruptBuffer, 0, 2);
+                }
+                
+                // Try to raise KeyboardInterrupt
+                try {
+                    this.pyodide.runPython('raise KeyboardInterrupt()');
+                } catch (e) {
+                }
+            } catch (e) {
+            }
         }
         
         this.isRunning = false;
+        this.isStopping = false;
         this.updateStatus('已停止');
+    }
+
+    /**
+     * Reset Pyodide (for hard reset when stop doesn't work)
+     */
+    async resetPyodide() {
+        this.pyodide = null;
+        this.isPyodideReady = false;
+        this.interruptBuffer = null;
+        return await this.initPyodide();
     }
 
     /**

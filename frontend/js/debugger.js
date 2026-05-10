@@ -25,7 +25,7 @@ class Debugger {
     /**
      * Start debugging session
      */
-    async startDebug(code, language, breakpoints = []) {
+    async startDebug(code, language, breakpoints = [], fileId = 'current') {
         if (this.isDebugging) {
             return { success: false, error: '调试器已在运行' };
         }
@@ -35,9 +35,10 @@ class Debugger {
         this.currentLine = null;
         this.callStack = [];
         this.variables.clear();
+        this.currentFileId = fileId;
         
         // Store breakpoints
-        this.breakpoints.set('current', new Set(breakpoints));
+        this.breakpoints.set(fileId, new Set(breakpoints));
         
         try {
             if (language === 'python') {
@@ -81,16 +82,16 @@ class Debugger {
             }
             
             // Check for breakpoint
-            const bpSet = this.breakpoints.get('current');
+            const bpSet = this.breakpoints.get(this.currentFileId);
             if (bpSet && bpSet.has(lineNum)) {
                 this.isPaused = true;
                 
                 if (this.onBreakpointHit) {
-                    this.onBreakpointHit(lineNum);
+                    this.onBreakpointHit(lineNum, this.currentFileId);
                 }
                 
                 if (this.onPause) {
-                    this.onPause(lineNum);
+                    this.onPause(lineNum, this.currentFileId);
                 }
                 
                 // Wait for continue/step command
@@ -103,7 +104,7 @@ class Debugger {
                 this.stepMode = null;
                 
                 if (this.onStep) {
-                    this.onStep(lineNum);
+                    this.onStep(lineNum, this.currentFileId);
                 }
                 
                 if (this.onPause) {
@@ -166,16 +167,16 @@ class Debugger {
             }
             
             // Check for breakpoint
-            const bpSet = this.breakpoints.get('current');
+            const bpSet = this.breakpoints.get(this.currentFileId);
             if (bpSet && bpSet.has(lineNum)) {
                 this.isPaused = true;
                 
                 if (this.onBreakpointHit) {
-                    this.onBreakpointHit(lineNum);
+                    this.onBreakpointHit(lineNum, this.currentFileId);
                 }
                 
                 if (this.onPause) {
-                    this.onPause(lineNum);
+                    this.onPause(lineNum, this.currentFileId);
                 }
                 
                 await this.waitForResume();
@@ -187,7 +188,7 @@ class Debugger {
                 this.stepMode = null;
                 
                 if (this.onStep) {
-                    this.onStep(lineNum);
+                    this.onStep(lineNum, this.currentFileId);
                 }
                 
                 if (this.onPause) {

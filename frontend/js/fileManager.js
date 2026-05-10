@@ -5,11 +5,13 @@
 class FileManager {
     constructor() {
         this.files = new Map();
+        this.openFiles = []; // Array of file IDs currently open in tabs
         this.activeFileId = null;
         this.fileCounter = 0;
         this.onFileChange = null;
         this.onFileSelect = null;
         this.onFileDelete = null;
+        this.onFileClose = null;
         
         this.loadFromStorage();
     }
@@ -44,6 +46,12 @@ class FileManager {
         };
         
         this.files.set(id, file);
+        
+        // Add to open files
+        if (!this.openFiles.includes(id)) {
+            this.openFiles.push(id);
+        }
+        
         this.saveToStorage();
         
         if (this.onFileChange) {
@@ -101,6 +109,13 @@ class FileManager {
     setActiveFile(id) {
         if (this.files.has(id)) {
             this.activeFileId = id;
+            
+            // Add to open files if not already open
+            if (!this.openFiles.includes(id)) {
+                this.openFiles.push(id);
+                this.saveToStorage();
+            }
+            
             const file = this.files.get(id);
             
             if (this.onFileSelect) {
@@ -177,16 +192,60 @@ class FileManager {
     }
 
     /**
+     * Close file (remove from tabs, but keep in file manager)
+     */
+    closeFile(id) {
+        const index = this.openFiles.indexOf(id);
+        if (index > -1) {
+            this.openFiles.splice(index, 1);
+            
+            // If closed file was active, select another open file
+            if (this.activeFileId === id) {
+                if (this.openFiles.length > 0) {
+                    // Select the file that was before or after the closed one
+                    const newIndex = Math.min(index, this.openFiles.length - 1);
+                    this.activeFileId = this.openFiles[newIndex];
+                } else {
+                    this.activeFileId = null;
+                }
+            }
+            
+            this.saveToStorage();
+            
+            const file = this.files.get(id);
+            if (this.onFileClose) {
+                this.onFileClose(file);
+            }
+            
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get open files
+     */
+    getOpenFiles() {
+        return this.openFiles.map(id => this.files.get(id)).filter(Boolean);
+    }
+
+    /**
      * Delete file
      */
     deleteFile(id) {
         const file = this.files.get(id);
         if (file) {
+            // Remove from open files first
+            const openIndex = this.openFiles.indexOf(id);
+            if (openIndex > -1) {
+                this.openFiles.splice(openIndex, 1);
+            }
+            
             this.files.delete(id);
             
             // If deleted file was active, select another
             if (this.activeFileId === id) {
-                const remaining = Array.from(this.files.keys());
+                const remaining = this.openFiles.length > 0 ? this.openFiles : Array.from(this.files.keys());
                 this.activeFileId = remaining.length > 0 ? remaining[0] : null;
             }
             
@@ -239,6 +298,7 @@ class FileManager {
     saveToStorage() {
         const data = {
             files: Array.from(this.files.entries()),
+            openFiles: this.openFiles,
             activeFileId: this.activeFileId,
             fileCounter: this.fileCounter
         };
@@ -253,6 +313,7 @@ class FileManager {
         
         if (data) {
             this.files = new Map(data.files || []);
+            this.openFiles = data.openFiles || Array.from(this.files.keys());
             this.activeFileId = data.activeFileId;
             this.fileCounter = data.fileCounter || 0;
         }

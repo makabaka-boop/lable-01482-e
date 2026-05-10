@@ -9,6 +9,8 @@ class EditorManager {
         this.decorations = [];
         this.breakpoints = new Map(); // Map<fileId, Set<lineNumber>>
         this.currentDebugLine = null;
+        this.currentFileId = null;
+        this.debugLines = new Map(); // Map<fileId, lineNumber>
         this.onContentChange = null;
         this.onBreakpointChange = null;
         this.onCursorChange = null;
@@ -136,7 +138,8 @@ class EditorManager {
             if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN ||
                 e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS) {
                 const lineNumber = e.target.position.lineNumber;
-                this.toggleBreakpoint(lineNumber);
+                const fileId = this.currentFileId || 'current';
+                this.toggleBreakpoint(lineNumber, fileId);
             }
         });
     }
@@ -158,7 +161,8 @@ class EditorManager {
         // F9 - Toggle breakpoint
         this.editor.addCommand(monaco.KeyCode.F9, () => {
             const position = this.editor.getPosition();
-            this.toggleBreakpoint(position.lineNumber);
+            const fileId = this.currentFileId || 'current';
+            this.toggleBreakpoint(position.lineNumber, fileId);
         });
 
         // Ctrl+/ - Toggle comment
@@ -350,10 +354,12 @@ class EditorManager {
     /**
      * Update breakpoint decorations
      */
-    updateBreakpointDecorations(fileId = 'current') {
+    updateBreakpointDecorations(fileId = null) {
         if (!this.editor) return;
         
-        const breakpoints = this.breakpoints.get(fileId) || new Set();
+        const targetFileId = fileId || this.currentFileId || 'current';
+        const breakpoints = this.breakpoints.get(targetFileId) || new Set();
+        const debugLine = this.debugLines.get(targetFileId) || null;
         const decorations = [];
         
         // Add breakpoint decorations
@@ -369,9 +375,9 @@ class EditorManager {
         });
         
         // Add current debug line decoration
-        if (this.currentDebugLine !== null) {
+        if (debugLine !== null) {
             decorations.push({
-                range: new monaco.Range(this.currentDebugLine, 1, this.currentDebugLine, 1),
+                range: new monaco.Range(debugLine, 1, debugLine, 1),
                 options: {
                     isWholeLine: true,
                     className: 'debug-line',
@@ -386,9 +392,17 @@ class EditorManager {
     /**
      * Set current debug line
      */
-    setDebugLine(lineNumber) {
+    setDebugLine(lineNumber, fileId = null) {
+        const targetFileId = fileId || this.currentFileId || 'current';
         this.currentDebugLine = lineNumber;
-        this.updateBreakpointDecorations();
+        
+        if (lineNumber !== null) {
+            this.debugLines.set(targetFileId, lineNumber);
+        } else {
+            this.debugLines.delete(targetFileId);
+        }
+        
+        this.updateBreakpointDecorations(targetFileId);
         
         if (lineNumber !== null && this.editor) {
             this.editor.revealLineInCenter(lineNumber);
@@ -398,9 +412,26 @@ class EditorManager {
     /**
      * Clear debug line
      */
-    clearDebugLine() {
+    clearDebugLine(fileId = null) {
+        const targetFileId = fileId || this.currentFileId || 'current';
         this.currentDebugLine = null;
-        this.updateBreakpointDecorations();
+        this.debugLines.delete(targetFileId);
+        this.updateBreakpointDecorations(targetFileId);
+    }
+
+    /**
+     * Get debug line for file
+     */
+    getDebugLine(fileId = null) {
+        const targetFileId = fileId || this.currentFileId || 'current';
+        return this.debugLines.get(targetFileId) || null;
+    }
+
+    /**
+     * Set current file ID
+     */
+    setCurrentFile(fileId) {
+        this.currentFileId = fileId;
     }
 
     /**
