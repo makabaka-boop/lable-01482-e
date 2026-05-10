@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeForge IDE - 在线代码编辑器</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splash-screen" class="splash-screen">
+        <div class="splash-content">
+            <div class="splash-logo">
+                <i class="fas fa-code"></i>
+            </div>
+            <h1 class="splash-title">CodeForge IDE</h1>
+            <div class="splash-loader">
+                <div class="loader-bar"></div>
+            </div>
+            <p class="splash-text">正在加载编译环境...</p>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="app" class="app hidden">
+        <!-- Top Toolbar -->
+        <header class="toolbar">
+            <div class="toolbar-left">
+                <div class="logo">
+                    <i class="fas fa-code"></i>
+                    <span>CodeForge</span>
+                </div>
+                <nav class="menu">
+                    <div class="menu-item" data-menu="file">
+                        <span>文件</span>
+                        <div class="dropdown">
+                            <button data-action="new-file"><i class="fas fa-file-plus"></i> 新建文件</button>
+                            <button data-action="open-file"><i class="fas fa-folder-open"></i> 打开文件</button>
+                            <button data-action="save-file"><i class="fas fa-save"></i> 保存 <kbd>Ctrl+S</kbd></button>
+                            <button data-action="download-file"><i class="fas fa-download"></i> 下载</button>
+                            <div class="divider"></div>
+                            <button data-action="settings"><i class="fas fa-cog"></i> 设置</button>
+                        </div>
+                    </div>
+                    <div class="menu-item" data-menu="edit">
+                        <span>编辑</span>
+                        <div class="dropdown">
+                            <button data-action="undo"><i class="fas fa-undo"></i> 撤销 <kbd>Ctrl+Z</kbd></button>
+                            <button data-action="redo"><i class="fas fa-redo"></i> 重做 <kbd>Ctrl+Y</kbd></button>
+                            <div class="divider"></div>
+                            <button data-action="find"><i class="fas fa-search"></i> 查找 <kbd>Ctrl+F</kbd></button>
+                            <button data-action="replace"><i class="fas fa-exchange-alt"></i> 替换 <kbd>Ctrl+H</kbd></button>
+                            <div class="divider"></div>
+                            <button data-action="format"><i class="fas fa-align-left"></i> 格式化代码</button>
+                        </div>
+                    </div>
+                    <div class="menu-item" data-menu="run">
+                        <span>运行</span>
+                        <div class="dropdown">
+                            <button data-action="run"><i class="fas fa-play"></i> 运行代码 <kbd>F5</kbd></button>
+                            <button data-action="debug"><i class="fas fa-bug"></i> 调试 <kbd>F9</kbd></button>
+                            <button data-action="stop"><i class="fas fa-stop"></i> 停止</button>
+                            <div class="divider"></div>
+                            <button data-action="clear-console"><i class="fas fa-eraser"></i> 清空控制台</button>
+                        </div>
+                    </div>
+                    <div class="menu-item" data-menu="help">
+                        <span>帮助</span>
+                        <div class="dropdown">
+                            <button data-action="shortcuts"><i class="fas fa-keyboard"></i> 快捷键</button>
+                            <button data-action="about"><i class="fas fa-info-circle"></i> 关于</button>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+            <div class="toolbar-center">
+                <div class="run-controls">
+                    <button id="btn-run" class="btn-run" title="运行 (F5)">
+                        <i class="fas fa-play"></i>
+                        <span>运行</span>
+                    </button>
+                    <button id="btn-debug" class="btn-debug" title="调试 (F9)">
+                        <i class="fas fa-bug"></i>
+                        <span>调试</span>
+                    </button>
+                    <button id="btn-stop" class="btn-stop" title="停止" disabled>
+                        <i class="fas fa-stop"></i>
+                        <span>停止</span>
+                    </button>
+                </div>
+            </div>
+            <div class="toolbar-right">
+                <div class="language-selector">
+                    <select id="language-select">
+                        <option value="python">Python</option>
+                        <option value="c">C</option>
+                        <option value="cpp">C++</option>
+                    </select>
+                </div>
+                <button id="btn-theme" class="btn-icon" title="切换主题">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button id="btn-fullscreen" class="btn-icon" title="全屏">
+                    <i class="fas fa-expand"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" data-tab="files" title="文件">
+                        <i class="fas fa-folder"></i>
+                    </button>
+                    <button class="sidebar-tab" data-tab="debug" title="调试">
+                        <i class="fas fa-bug"></i>
+                    </button>
+                    <button class="sidebar-tab" data-tab="settings" title="设置">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+                <div class="sidebar-content">
+                    <!-- Files Panel -->
+                    <div class="sidebar-panel active" data-panel="files">
+                        <div class="panel-header">
+                            <span>文件管理器</span>
+                            <div class="panel-actions">
+                                <button data-action="new-file" title="新建文件">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="file-tree" id="file-tree">
+                            <!-- Files will be rendered here -->
+                        </div>
+                    </div>
+                    <!-- Debug Panel -->
+                    <div class="sidebar-panel" data-panel="debug">
+                        <div class="panel-header">
+                            <span>调试控制</span>
+                        </div>
+                        <div class="debug-controls">
+                            <div class="debug-buttons">
+                                <button id="debug-continue" title="继续 (F5)" disabled>
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button id="debug-step-over" title="单步跳过 (F10)" disabled>
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
+                                <button id="debug-step-into" title="单步进入 (F11)" disabled>
+                                    <i class="fas fa-arrow-down"></i>
+                                </button>
+                                <button id="debug-step-out" title="单步跳出 (Shift+F11)" disabled>
+                                    <i class="fas fa-arrow-up"></i>
+                                </button>
+                                <button id="debug-restart" title="重启" disabled>
+                                    <i class="fas fa-redo"></i>
+                                </button>
+                                <button id="debug-stop" title="停止" disabled>
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                            </div>
+                            <div class="debug-section">
+                                <div class="section-header">
+                                    <i class="fas fa-circle"></i>
+                                    <span>断点</span>
+                                </div>
+                                <div class="breakpoints-list" id="breakpoints-list">
+                                    <div class="empty-state">无断点</div>
+                                </div>
+                            </div>
+                            <div class="debug-section">
+                                <div class="section-header">
+                                    <i class="fas fa-layer-group"></i>
+                                    <span>调用堆栈</span>
+                                </div>
+                                <div class="callstack-list" id="callstack-list">
+                                    <div class="empty-state">未运行</div>
+                                </div>
+                            </div>
+                            <div class="debug-section">
+                                <div class="section-header">
+                                    <i class="fas fa-eye"></i>
+                                    <span>变量监视</span>
+                                </div>
+                                <div class="variables-list" id="variables-list">
+                                    <div class="empty-state">无变量</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Settings Panel -->
+                    <div class="sidebar-panel" data-panel="settings">
+                        <div class="panel-header">
+                            <span>编辑器设置</span>
+                        </div>
+                        <div class="settings-content">
+                            <div class="setting-group">
+                                <label>字体大小</label>
+                                <input type="range" id="font-size" min="12" max="24" value="14">
+                                <span id="font-size-value">14px</span>
+                            </div>
+                            <div class="setting-group">
+                                <label>Tab 宽度</label>
+                                <select id="tab-size">
+                                    <option value="2">2 空格</option>
+                                    <option value="4" selected>4 空格</option>
+                                    <option value="8">8 空格</option>
+                                </select>
+                            </div>
+                            <div class="setting-group">
+                                <label>自动换行</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="word-wrap">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="setting-group">
+                                <label>显示行号</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="line-numbers" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="setting-group">
+                                <label>迷你地图</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="minimap" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="setting-group">
+                                <label>括号配对高亮</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="bracket-matching" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Resizer -->
+            <div class="resizer" id="sidebar-resizer"></div>
+
+            <!-- Editor Area -->
+            <section class="editor-area">
+                <!-- Tabs -->
+                <div class="editor-tabs" id="editor-tabs">
+                    <!-- Tabs will be rendered here -->
+                </div>
+                <!-- Editor Container -->
+                <div class="editor-container">
+                    <div id="monaco-editor"></div>
+                </div>
+            </section>
+
+            <!-- Vertical Resizer -->
+            <div class="resizer-vertical" id="panel-resizer"></div>
+
+            <!-- Bottom Panel -->
+            <section class="bottom-panel">
+                <div class="panel-tabs">
+                    <button class="panel-tab active" data-tab="console">
+                        <i class="fas fa-terminal"></i>
+                        <span>控制台</span>
+                    </button>
+                    <button class="panel-tab" data-tab="output">
+                        <i class="fas fa-stream"></i>
+                        <span>输出</span>
+                    </button>
+                    <button class="panel-tab" data-tab="problems">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>问题</span>
+                        <span class="badge" id="problems-count">0</span>
+                    </button>
+                </div>
+                <div class="panel-content">
+                    <!-- Console -->
+                    <div class="panel-view active" data-view="console">
+                        <div class="console-toolbar">
+                            <button id="console-clear" title="清空">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <div class="console-filter">
+                                <button class="filter-btn active" data-filter="all">全部</button>
+                                <button class="filter-btn" data-filter="log">日志</button>
+                                <button class="filter-btn" data-filter="error">错误</button>
+                                <button class="filter-btn" data-filter="warn">警告</button>
+                            </div>
+                        </div>
+                        <div class="console-output" id="console-output">
+                            <div class="console-welcome">
+                                <i class="fas fa-terminal"></i>
+                                <p>欢迎使用 CodeForge IDE</p>
+                                <p class="hint">按 F5 或点击运行按钮执行代码</p>
+                            </div>
+                        </div>
+                        <div class="console-input-wrapper">
+                            <span class="prompt">&gt;</span>
+                            <input type="text" id="console-input" placeholder="输入表达式..." autocomplete="off">
+                        </div>
+                    </div>
+                    <!-- Output -->
+                    <div class="panel-view" data-view="output">
+                        <div class="output-content" id="output-content">
+                            <div class="empty-state">
+                                <i class="fas fa-stream"></i>
+                                <p>编译输出将显示在这里</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Problems -->
+                    <div class="panel-view" data-view="problems">
+                        <div class="problems-list" id="problems-list">
+                            <div class="empty-state">
+                                <i class="fas fa-check-circle"></i>
+                                <p>没有问题</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-left">
+                <span class="status-item" id="status-language">
+                    <i class="fas fa-code"></i>
+                    <span>Python</span>
+                </span>
+                <span class="status-item" id="status-encoding">UTF-8</span>
+                <span class="status-item" id="status-eol">LF</span>
+            </div>
+            <div class="status-center">
+                <span class="status-item" id="status-message">就绪</span>
+            </div>
+            <div class="status-right">
+                <span class="status-item" id="status-position">行 1, 列 1</span>
+                <span class="status-item" id="status-selection">已选择 0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <!-- New File Modal -->
+    <div class="modal" id="new-file-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>新建文件</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>文件名</label>
+                    <input type="text" id="new-file-name" placeholder="main.py">
+                </div>
+                <div class="form-group">
+                    <label>语言</label>
+                    <select id="new-file-language">
+                        <option value="python">Python (.py)</option>
+                        <option value="c">C (.c)</option>
+                        <option value="cpp">C++ (.cpp)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>模板</label>
+                    <select id="new-file-template">
+                        <option value="empty">空白文件</option>
+                        <option value="hello">Hello World</option>
+                        <option value="main">主函数模板</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-cancel">取消</button>
+                <button class="btn-primary" id="create-file-btn">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settings-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>设置</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="editor">编辑器</button>
+                    <button class="settings-tab" data-tab="compiler">编译器</button>
+                    <button class="settings-tab" data-tab="appearance">外观</button>
+                </div>
+                <div class="settings-panels">
+                    <div class="settings-panel active" data-panel="editor">
+                        <h4>编辑器设置</h4>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">字体大小</span>
+                                <span class="setting-desc">编辑器中的字体大小</span>
+                            </div>
+                            <input type="number" class="setting-input" id="setting-font-size" value="14" min="10" max="32">
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">字体</span>
+                                <span class="setting-desc">编辑器字体</span>
+                            </div>
+                            <select class="setting-select" id="setting-font-family">
+                                <option value="JetBrains Mono">JetBrains Mono</option>
+                                <option value="Fira Code">Fira Code</option>
+                                <option value="Source Code Pro">Source Code Pro</option>
+                                <option value="Consolas">Consolas</option>
+                                <option value="Monaco">Monaco</option>
+                            </select>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">自动保存</span>
+                                <span class="setting-desc">自动保存编辑的文件</span>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="setting-auto-save" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="settings-panel" data-panel="compiler">
+                        <h4>编译器设置</h4>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">C 编译器标准</span>
+                                <span class="setting-desc">选择 C 语言标准</span>
+                            </div>
+                            <select class="setting-select" id="setting-c-standard">
+                                <option value="c11">C11</option>
+                                <option value="c17">C17</option>
+                                <option value="c99">C99</option>
+                            </select>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">C++ 编译器标准</span>
+                                <span class="setting-desc">选择 C++ 语言标准</span>
+                            </div>
+                            <select class="setting-select" id="setting-cpp-standard">
+                                <option value="c++17">C++17</option>
+                                <option value="c++20">C++20</option>
+                                <option value="c++14">C++14</option>
+                            </select>
+                        </div>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">优化级别</span>
+                                <span class="setting-desc">编译优化级别</span>
+                            </div>
+                            <select class="setting-select" id="setting-optimization">
+                                <option value="O0">-O0 (无优化)</option>
+                                <option value="O1">-O1 (基本优化)</option>
+                                <option value="O2" selected>-O2 (推荐)</option>
+                                <option value="O3">-O3 (激进优化)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="settings-panel" data-panel="appearance">
+                        <h4>外观设置</h4>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-label">主题</span>
+                                <span class="setting-desc">选择编辑器主题</span>
+                            </div>
+                            <select class="setting-select" id="setting-theme">
+                                <option value="vs-dark">Dark (默认)</option>
+                                <option value="vs">Light</option>
+                                <option value="hc-black">High Contrast</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary modal-close">完成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shortcuts Modal -->
+    <div class="modal" id="shortcuts-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>快捷键</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body shortcuts-body">
+                <div class="shortcut-group">
+                    <h4>文件</h4>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>保存文件</span></div>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>N</kbd><span>新建文件</span></div>
+                </div>
+                <div class="shortcut-group">
+                    <h4>编辑</h4>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>撤销</span></div>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>Y</kbd><span>重做</span></div>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>F</kbd><span>查找</span></div>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>H</kbd><span>替换</span></div>
+                    <div class="shortcut-item"><kbd>Ctrl</kbd>+<kbd>/</kbd><span>注释/取消注释</span></div>
+                </div>
+                <div class="shortcut-group">
+                    <h4>运行</h4>
+                    <div class="shortcut-item"><kbd>F5</kbd><span>运行代码</span></div>
+                    <div class="shortcut-item"><kbd>F9</kbd><span>切换断点</span></div>
+                    <div class="shortcut-item"><kbd>F10</kbd><span>单步跳过</span></div>
+                    <div class="shortcut-item"><kbd>F11</kbd><span>单步进入</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary modal-close">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal" id="about-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>关于 CodeForge IDE</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body about-body">
+                <div class="about-logo">
+                    <i class="fas fa-code"></i>
+                </div>
+                <h2>CodeForge IDE</h2>
+                <p class="version">版本 1.0.0</p>
+                <p class="description">
+                    一个功能强大的在线代码编辑器，支持 Python、C 和 C++ 的编译、运行和调试。
+                </p>
+                <div class="about-features">
+                    <div class="feature">
+                        <i class="fas fa-edit"></i>
+                        <span>Monaco 编辑器</span>
+                    </div>
+                    <div class="feature">
+                        <i class="fab fa-python"></i>
+                        <span>Python 支持</span>
+                    </div>
+                    <div class="feature">
+                        <i class="fas fa-microchip"></i>
+                        <span>C/C++ 编译</span>
+                    </div>
+                    <div class="feature">
+                        <i class="fas fa-bug"></i>
+                        <span>调试功能</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary modal-close">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Modal for stdin -->
+    <div class="modal" id="input-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>程序输入</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>标准输入 (stdin)</label>
+                    <textarea id="stdin-input" rows="6" placeholder="在此输入程序需要的输入数据..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-cancel">取消</button>
+                <button class="btn-primary" id="submit-input-btn">确定并运行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/fileManager.js"></script>
+    <script src="js/editor.js"></script>
+    <script src="js/compiler.js"></script>
+    <script src="js/debugger.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
