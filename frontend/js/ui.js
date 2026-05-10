@@ -447,7 +447,7 @@ class UIManager {
                 <button class="editor-tab ${isActive ? 'active' : ''} ${isModified ? 'modified' : ''}" data-file-id="${file.id}">
                     <i class="${icon}"></i>
                     <span class="tab-name">${Utils.escapeHtml(file.name)}</span>
-                    <span class="tab-close" title="关闭">
+                    <span class="tab-close" title="关闭标签页">
                         <i class="fas fa-times"></i>
                     </span>
                 </button>
@@ -680,17 +680,18 @@ class UIManager {
     /**
      * Update breakpoints list
      */
-    updateBreakpoints(breakpoints) {
+    updateBreakpoints(breakpoints, fileName) {
         const list = this.elements.breakpointsList;
         if (!list) return;
         
         if (breakpoints.length === 0) {
             list.innerHTML = '<div class="empty-state">无断点</div>';
         } else {
+            const fileLabel = fileName ? ` (${fileName})` : '';
             list.innerHTML = breakpoints.map(line => `
                 <div class="breakpoint-item" data-line="${line}">
                     <i class="fas fa-circle" style="color: var(--accent-danger); font-size: 8px;"></i>
-                    <span class="line-num">行 ${line}</span>
+                    <span class="line-num">行 ${line}${fileLabel}</span>
                 </div>
             `).join('');
             
