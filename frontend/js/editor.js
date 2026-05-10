@@ -7,8 +7,10 @@ class EditorManager {
     constructor() {
         this.editor = null;
         this.decorations = [];
-        this.breakpoints = new Map(); // Map<fileId, Set<lineNumber>>
+        this.breakpoints = new Map();
         this.currentDebugLine = null;
+        this.currentFileId = null;
+        this.debugFileId = null;
         this.onContentChange = null;
         this.onBreakpointChange = null;
         this.onCursorChange = null;
@@ -109,11 +111,11 @@ class EditorManager {
      * Setup event listeners
      */
     setupEventListeners() {
-        // Content change event
         this.editor.onDidChangeModelContent((e) => {
             if (this.onContentChange) {
                 this.onContentChange(this.getValue());
             }
+            this.updateBreakpointDecorations();
         });
 
         // Cursor position change event
@@ -308,7 +310,10 @@ class EditorManager {
     /**
      * Toggle breakpoint at line
      */
-    toggleBreakpoint(lineNumber, fileId = 'current') {
+    toggleBreakpoint(lineNumber, fileId) {
+        if (!fileId) fileId = this.currentFileId;
+        if (!fileId) return;
+        
         if (!this.breakpoints.has(fileId)) {
             this.breakpoints.set(fileId, new Set());
         }
@@ -331,14 +336,16 @@ class EditorManager {
     /**
      * Get breakpoints for file
      */
-    getBreakpoints(fileId = 'current') {
+    getBreakpoints(fileId) {
+        if (!fileId) fileId = this.currentFileId;
         return Array.from(this.breakpoints.get(fileId) || []);
     }
 
     /**
      * Clear all breakpoints for file
      */
-    clearBreakpoints(fileId = 'current') {
+    clearBreakpoints(fileId) {
+        if (!fileId) fileId = this.currentFileId;
         this.breakpoints.delete(fileId);
         this.updateBreakpointDecorations(fileId);
         
@@ -350,13 +357,17 @@ class EditorManager {
     /**
      * Update breakpoint decorations
      */
-    updateBreakpointDecorations(fileId = 'current') {
+    updateBreakpointDecorations(fileId) {
         if (!this.editor) return;
+        if (!fileId) fileId = this.currentFileId;
+        
+        const isCurrentFile = fileId === this.currentFileId;
+        
+        if (!isCurrentFile) return;
         
         const breakpoints = this.breakpoints.get(fileId) || new Set();
         const decorations = [];
         
-        // Add breakpoint decorations
         breakpoints.forEach(lineNumber => {
             decorations.push({
                 range: new monaco.Range(lineNumber, 1, lineNumber, 1),
@@ -368,8 +379,7 @@ class EditorManager {
             });
         });
         
-        // Add current debug line decoration
-        if (this.currentDebugLine !== null) {
+        if (this.currentDebugLine !== null && this.debugFileId === this.currentFileId) {
             decorations.push({
                 range: new monaco.Range(this.currentDebugLine, 1, this.currentDebugLine, 1),
                 options: {
@@ -386,11 +396,12 @@ class EditorManager {
     /**
      * Set current debug line
      */
-    setDebugLine(lineNumber) {
+    setDebugLine(lineNumber, fileId) {
         this.currentDebugLine = lineNumber;
-        this.updateBreakpointDecorations();
+        this.debugFileId = fileId || this.currentFileId;
+        this.updateBreakpointDecorations(this.debugFileId);
         
-        if (lineNumber !== null && this.editor) {
+        if (lineNumber !== null && this.editor && this.debugFileId === this.currentFileId) {
             this.editor.revealLineInCenter(lineNumber);
         }
     }
@@ -400,6 +411,7 @@ class EditorManager {
      */
     clearDebugLine() {
         this.currentDebugLine = null;
+        this.debugFileId = null;
         this.updateBreakpointDecorations();
     }
 

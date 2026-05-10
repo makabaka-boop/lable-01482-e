@@ -76,6 +76,7 @@ class CodeForgeIDE {
         };
         
         this.fileManager.onFileDelete = (file) => {
+            this.editorManager.clearBreakpoints(file.id);
             this.refreshUI();
             const activeFile = this.fileManager.getActiveFile();
             if (activeFile) {
@@ -97,7 +98,10 @@ class CodeForgeIDE {
         };
         
         this.editorManager.onBreakpointChange = (fileId, breakpoints) => {
-            this.ui.updateBreakpoints(breakpoints);
+            const activeFile = this.fileManager.getActiveFile();
+            if (activeFile && activeFile.id === fileId) {
+                this.ui.updateBreakpoints(breakpoints, activeFile.name);
+            }
         };
         
         // Compiler callbacks
@@ -130,8 +134,8 @@ class CodeForgeIDE {
         };
         
         // Debugger callbacks
-        this.debugger.onPause = (line) => {
-            this.editorManager.setDebugLine(line);
+        this.debugger.onPause = (line, fileId) => {
+            this.editorManager.setDebugLine(line, fileId);
             this.ui.setDebugState(true, true);
             this.ui.logToConsole(`暂停在第 ${line} 行`, 'info');
         };
@@ -241,7 +245,18 @@ class CodeForgeIDE {
         });
         
         document.addEventListener('file:close', (e) => {
-            this.fileManager.deleteFile(e.detail);
+            const fileId = e.detail;
+            this.fileManager.closeFile(fileId);
+            
+            const activeFile = this.fileManager.getActiveFile();
+            if (activeFile) {
+                this.openFile(activeFile);
+            } else {
+                this.editorManager.setValue('');
+                this.editorManager.currentFileId = null;
+            }
+            
+            this.refreshUI();
         });
         
         // Menu actions
@@ -318,31 +333,29 @@ class CodeForgeIDE {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // F5 - Run
             if (e.key === 'F5' && !e.ctrlKey && !e.shiftKey) {
                 e.preventDefault();
                 this.runCode();
             }
             
-            // F9 - Debug
             if (e.key === 'F9' && !e.ctrlKey && !e.shiftKey) {
                 e.preventDefault();
-                this.debugCode();
+                const position = this.editorManager.editor.getPosition();
+                if (position) {
+                    this.editorManager.toggleBreakpoint(position.lineNumber);
+                }
             }
             
-            // F10 - Step over
             if (e.key === 'F10' && this.debugger.isDebugging) {
                 e.preventDefault();
                 this.debugger.stepOver();
             }
             
-            // F11 - Step into
-            if (e.key === 'F11' && this.debugger.isDebugging) {
+            if (e.key === 'F11' && !e.shiftKey && this.debugger.isDebugging) {
                 e.preventDefault();
                 this.debugger.stepInto();
             }
             
-            // Shift+F11 - Step out
             if (e.key === 'F11' && e.shiftKey && this.debugger.isDebugging) {
                 e.preventDefault();
                 this.debugger.stepOut();
@@ -356,6 +369,7 @@ class CodeForgeIDE {
     loadInitialState() {
         const activeFile = this.fileManager.getActiveFile();
         if (activeFile) {
+            this.fileManager.openFileIds.add(activeFile.id);
             this.openFile(activeFile);
         }
         this.refreshUI();
@@ -365,14 +379,17 @@ class CodeForgeIDE {
      * Open file in editor
      */
     openFile(file) {
+        this.editorManager.currentFileId = file.id;
         this.editorManager.setValue(file.content);
         this.editorManager.setLanguage(file.language);
         this.ui.updateLanguageSelector(file.language);
         
-        // Restore breakpoints
-        const breakpoints = this.editorManager.getBreakpoints(file.id);
-        this.editorManager.updateBreakpointDecorations(file.id);
-        this.ui.updateBreakpoints(breakpoints);
+        requestAnimationFrame(() => {
+            this.editorManager.updateBreakpointDecorations(file.id);
+            
+            const breakpoints = this.editorManager.getBreakpoints(file.id);
+            this.ui.updateBreakpoints(breakpoints, file.name);
+        });
         
         this.refreshUI();
     }
@@ -381,12 +398,13 @@ class CodeForgeIDE {
      * Refresh UI
      */
     refreshUI() {
-        const files = this.fileManager.getAllFiles();
+        const allFiles = this.fileManager.getAllFiles();
+        const openFiles = this.fileManager.getOpenFiles();
         const activeFile = this.fileManager.getActiveFile();
         const activeId = activeFile?.id;
         
-        this.ui.renderFileTree(files, activeId);
-        this.ui.renderEditorTabs(files, activeId);
+        this.ui.renderFileTree(allFiles, activeId);
+        this.ui.renderEditorTabs(openFiles, activeId);
         
         if (activeFile) {
             this.ui.updateLanguageSelector(activeFile.language);
@@ -566,6 +584,7 @@ class CodeForgeIDE {
         const needsInput = this.codeNeedsInput(content, file.language);
         
         if (needsInput) {
+            document.getElementById('stdin-input').value = '';
             this.ui.openModal('input-modal');
             return;
         }
@@ -621,14 +640,11 @@ class CodeForgeIDE {
             return;
         }
         
-        // Save before debugging
         const content = this.editorManager.getValue();
         this.fileManager.updateContent(file.id, content);
         
-        // Get breakpoints
         const breakpoints = this.editorManager.getBreakpoints(file.id);
         
-        // Switch to debug panel
         this.ui.switchSidebarTab('debug');
         
         this.ui.setRunningState(true);
@@ -640,7 +656,7 @@ class CodeForgeIDE {
         }
         
         try {
-            await this.debugger.startDebug(content, file.language, breakpoints);
+            await this.debugger.startDebug(content, file.language, breakpoints, file.id);
         } catch (error) {
             this.ui.logToConsole('调试错误: ' + error.message, 'error');
         }
@@ -684,8 +700,10 @@ class CodeForgeIDE {
             } catch (error) {
                 this.ui.logToConsole(error.message, 'error');
             }
+        } else if (language === 'python') {
+            this.ui.logToConsole('Python 运行时未就绪，无法进行表达式求值', 'warn');
         } else {
-            this.ui.logToConsole('请在调试模式下或 Python 环境中使用表达式求值', 'warn');
+            this.ui.logToConsole(`${language.toUpperCase()} 语言不支持在非调试模式下进行表达式求值，请先进入调试模式`, 'warn');
         }
     }
 }

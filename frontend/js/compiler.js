@@ -8,6 +8,7 @@ class CompilerRuntime {
         this.pyodide = null;
         this.isPyodideReady = false;
         this.isRunning = false;
+        this._stopRequested = false;
         this.abortController = null;
         this.onOutput = null;
         this.onError = null;
@@ -26,6 +27,8 @@ class CompilerRuntime {
         try {
             this.updateStatus('正在加载 Python 运行时...');
             
+            const interruptBuffer = new Int32Array(1);
+            
             this.pyodide = await loadPyodide({
                 indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/',
                 stdout: (text) => {
@@ -42,7 +45,9 @@ class CompilerRuntime {
                 }
             });
             
-            // Install commonly used packages
+            this.pyodide._interruptBuffer = interruptBuffer;
+            this.pyodide.setInterruptBuffer(interruptBuffer);
+            
             this.updateStatus('正在加载 Python 包...');
             await this.pyodide.loadPackage(['numpy', 'micropip']);
             
@@ -75,6 +80,7 @@ class CompilerRuntime {
         }
         
         this.isRunning = true;
+        this._stopRequested = false;
         this.updateStatus('正在运行...');
         
         try {
@@ -90,6 +96,12 @@ class CompilerRuntime {
                     break;
                 default:
                     result = { success: false, error: `不支持的语言: ${language}` };
+            }
+            
+            if (this._stopRequested) {
+                this.isRunning = false;
+                this.updateStatus('已停止');
+                return result;
             }
             
             this.isRunning = false;
@@ -125,12 +137,14 @@ class CompilerRuntime {
             }
         }
         
-        // Clear previous output
         this.pythonStdout = [];
         this.pythonStderr = [];
         
+        if (this.pyodide._interruptBuffer) {
+            this.pyodide._interruptBuffer[0] = 0;
+        }
+        
         try {
-            // Setup stdin
             if (stdin) {
                 const stdinLines = stdin.split('\n');
                 let lineIndex = 0;
@@ -159,15 +173,25 @@ sys.stdin = StdinWrapper(_stdin_lines)
                 `);
             }
             
-            // Run the code
             const startTime = performance.now();
-            const result = await this.pyodide.runPythonAsync(code);
+            let result;
+            try {
+                result = await this.pyodide.runPythonAsync(code);
+            } catch (execError) {
+                if (this._stopRequested || execError.message?.includes('KeyboardInterrupt') || execError.message?.includes('SystemExit')) {
+                    return {
+                        success: false,
+                        output: this.pythonStdout.join('\n'),
+                        error: '执行已被用户停止',
+                        executionTime: Math.round(performance.now() - startTime)
+                    };
+                }
+                throw execError;
+            }
             const endTime = performance.now();
             
-            // Check for result value
             let output = this.pythonStdout.join('\n');
             if (result !== undefined && result !== null) {
-                // Don't show undefined/None unless it's the only output
                 if (output.trim() === '' && String(result) !== 'undefined') {
                     output = String(result);
                 }
@@ -180,6 +204,14 @@ sys.stdin = StdinWrapper(_stdin_lines)
                 executionTime: Math.round(endTime - startTime)
             };
         } catch (error) {
+            if (this._stopRequested) {
+                return {
+                    success: false,
+                    output: this.pythonStdout.join('\n'),
+                    error: '执行已被用户停止',
+                    executionTime: 0
+                };
+            }
             return {
                 success: false,
                 output: this.pythonStdout.join('\n'),
@@ -336,18 +368,24 @@ sys.stdin = StdinWrapper(_stdin_lines)
      * Stop running code
      */
     stop() {
+        this._stopRequested = true;
+        
         if (this.abortController) {
             this.abortController.abort();
         }
         
         if (this.pyodide && this.isRunning) {
-            // Pyodide doesn't have a direct way to stop execution
-            // We'll need to reload it for a clean stop
-            this.pyodide.runPython('raise KeyboardInterrupt()');
+            if (this.pyodide._interruptBuffer) {
+                this.pyodide._interruptBuffer[0] = 2;
+            }
         }
         
         this.isRunning = false;
         this.updateStatus('已停止');
+        
+        if (this.onComplete) {
+            this.onComplete({ success: false, error: '执行已被用户停止', executionTime: 0 });
+        }
     }
 
     /**

@@ -5,6 +5,7 @@
 class FileManager {
     constructor() {
         this.files = new Map();
+        this.openFileIds = new Set();
         this.activeFileId = null;
         this.fileCounter = 0;
         this.onFileChange = null;
@@ -101,6 +102,7 @@ class FileManager {
     setActiveFile(id) {
         if (this.files.has(id)) {
             this.activeFileId = id;
+            this.openFileIds.add(id);
             const file = this.files.get(id);
             
             if (this.onFileSelect) {
@@ -183,8 +185,8 @@ class FileManager {
         const file = this.files.get(id);
         if (file) {
             this.files.delete(id);
+            this.openFileIds.delete(id);
             
-            // If deleted file was active, select another
             if (this.activeFileId === id) {
                 const remaining = Array.from(this.files.keys());
                 this.activeFileId = remaining.length > 0 ? remaining[0] : null;
@@ -203,6 +205,34 @@ class FileManager {
             return true;
         }
         return false;
+    }
+
+    closeFile(id) {
+        const file = this.files.get(id);
+        if (!file) return false;
+        
+        this.openFileIds.delete(id);
+        
+        if (this.activeFileId === id) {
+            const remaining = Array.from(this.openFileIds);
+            if (remaining.length > 0) {
+                this.activeFileId = remaining[0];
+            } else {
+                this.activeFileId = null;
+            }
+        }
+        
+        if (this.onFileChange) {
+            this.onFileChange('close', file);
+        }
+        
+        return true;
+    }
+    
+    getOpenFiles() {
+        return Array.from(this.openFileIds)
+            .map(id => this.files.get(id))
+            .filter(f => f);
     }
 
     /**
@@ -255,12 +285,16 @@ class FileManager {
             this.files = new Map(data.files || []);
             this.activeFileId = data.activeFileId;
             this.fileCounter = data.fileCounter || 0;
+            
+            if (this.activeFileId && this.files.has(this.activeFileId)) {
+                this.openFileIds.add(this.activeFileId);
+            }
         }
         
-        // Create default file if none exist
         if (this.files.size === 0) {
             const file = this.createFile('main.py', 'python');
             this.activeFileId = file.id;
+            this.openFileIds.add(file.id);
         }
     }
 

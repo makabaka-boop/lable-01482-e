@@ -7,11 +7,12 @@ class Debugger {
     constructor() {
         this.isDebugging = false;
         this.isPaused = false;
-        this.breakpoints = new Map(); // Map<fileId, Set<lineNumber>>
+        this.breakpoints = new Map();
         this.currentLine = null;
+        this.debugFileId = null;
         this.callStack = [];
         this.variables = new Map();
-        this.stepMode = null; // 'over', 'into', 'out'
+        this.stepMode = null;
         
         this.onPause = null;
         this.onResume = null;
@@ -25,7 +26,7 @@ class Debugger {
     /**
      * Start debugging session
      */
-    async startDebug(code, language, breakpoints = []) {
+    async startDebug(code, language, breakpoints = [], fileId) {
         if (this.isDebugging) {
             return { success: false, error: '调试器已在运行' };
         }
@@ -33,17 +34,16 @@ class Debugger {
         this.isDebugging = true;
         this.isPaused = false;
         this.currentLine = null;
+        this.debugFileId = fileId || null;
         this.callStack = [];
         this.variables.clear();
         
-        // Store breakpoints
-        this.breakpoints.set('current', new Set(breakpoints));
+        this.breakpoints.set(this.debugFileId || 'current', new Set(breakpoints));
         
         try {
             if (language === 'python') {
                 return await this.debugPython(code, breakpoints);
             } else {
-                // For C/C++, we use a simulated debugging experience
                 return await this.debugCCpp(code, language, breakpoints);
             }
         } catch (error) {
@@ -60,28 +60,25 @@ class Debugger {
     async debugPython(code, breakpoints) {
         const lines = code.split('\n');
         const executableLines = this.getExecutableLines(lines, 'python');
+        const fileId = this.debugFileId || 'current';
         
-        // Initialize call stack
         this.callStack = [{
             name: '<module>',
             file: 'main.py',
             line: 1
         }];
         
-        // Simulate stepping through code
         for (let i = 0; i < executableLines.length; i++) {
             const lineNum = executableLines[i];
             this.currentLine = lineNum;
             
-            // Update call stack
             this.callStack[0].line = lineNum;
             
             if (this.onCallStackUpdate) {
                 this.onCallStackUpdate(this.callStack);
             }
             
-            // Check for breakpoint
-            const bpSet = this.breakpoints.get('current');
+            const bpSet = this.breakpoints.get(fileId);
             if (bpSet && bpSet.has(lineNum)) {
                 this.isPaused = true;
                 
@@ -90,14 +87,12 @@ class Debugger {
                 }
                 
                 if (this.onPause) {
-                    this.onPause(lineNum);
+                    this.onPause(lineNum, this.debugFileId);
                 }
                 
-                // Wait for continue/step command
                 await this.waitForResume();
             }
             
-            // Check step mode
             if (this.stepMode === 'over' || this.stepMode === 'into') {
                 this.isPaused = true;
                 this.stepMode = null;
@@ -107,13 +102,12 @@ class Debugger {
                 }
                 
                 if (this.onPause) {
-                    this.onPause(lineNum);
+                    this.onPause(lineNum, this.debugFileId);
                 }
                 
                 await this.waitForResume();
             }
             
-            // Parse variables from current line
             this.parseVariables(lines[lineNum - 1]);
             
             if (!this.isDebugging) {
@@ -131,8 +125,8 @@ class Debugger {
     async debugCCpp(code, language, breakpoints) {
         const lines = code.split('\n');
         const executableLines = this.getExecutableLines(lines, language);
+        const fileId = this.debugFileId || 'current';
         
-        // Find main function
         let inMain = false;
         let mainStartLine = 1;
         
@@ -144,18 +138,15 @@ class Debugger {
             }
         }
         
-        // Initialize call stack
         this.callStack = [{
             name: 'main',
             file: language === 'c' ? 'main.c' : 'main.cpp',
             line: mainStartLine
         }];
         
-        // Simulate stepping through main function
         for (let i = 0; i < executableLines.length; i++) {
             const lineNum = executableLines[i];
             
-            // Skip lines before main
             if (lineNum < mainStartLine) continue;
             
             this.currentLine = lineNum;
@@ -165,8 +156,7 @@ class Debugger {
                 this.onCallStackUpdate(this.callStack);
             }
             
-            // Check for breakpoint
-            const bpSet = this.breakpoints.get('current');
+            const bpSet = this.breakpoints.get(fileId);
             if (bpSet && bpSet.has(lineNum)) {
                 this.isPaused = true;
                 
@@ -175,13 +165,12 @@ class Debugger {
                 }
                 
                 if (this.onPause) {
-                    this.onPause(lineNum);
+                    this.onPause(lineNum, this.debugFileId);
                 }
                 
                 await this.waitForResume();
             }
             
-            // Check step mode
             if (this.stepMode) {
                 this.isPaused = true;
                 this.stepMode = null;
@@ -191,13 +180,12 @@ class Debugger {
                 }
                 
                 if (this.onPause) {
-                    this.onPause(lineNum);
+                    this.onPause(lineNum, this.debugFileId);
                 }
                 
                 await this.waitForResume();
             }
             
-            // Parse variables
             this.parseVariables(lines[lineNum - 1], language);
             
             if (!this.isDebugging) {
