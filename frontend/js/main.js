@@ -69,6 +69,12 @@ class CodeForgeIDE {
         // File manager callbacks
         this.fileManager.onFileChange = (action, file) => {
             this.refreshUI();
+            if (action === 'close' || action === 'delete') {
+                const activeFile = this.fileManager.getActiveFile();
+                if (activeFile) {
+                    this.openFile(activeFile);
+                }
+            }
         };
         
         this.fileManager.onFileSelect = (file) => {
@@ -98,6 +104,10 @@ class CodeForgeIDE {
         
         this.editorManager.onBreakpointChange = (fileId, breakpoints) => {
             this.ui.updateBreakpoints(breakpoints);
+            this.debugger.clearBreakpoints(fileId);
+            breakpoints.forEach(line => {
+                this.debugger.addBreakpoint(fileId, line);
+            });
         };
         
         // Compiler callbacks
@@ -241,7 +251,7 @@ class CodeForgeIDE {
         });
         
         document.addEventListener('file:close', (e) => {
-            this.fileManager.deleteFile(e.detail);
+            this.fileManager.closeFile(e.detail);
         });
         
         // Menu actions
@@ -365,6 +375,9 @@ class CodeForgeIDE {
      * Open file in editor
      */
     openFile(file) {
+        // Set current file ID before any operations
+        this.editorManager.currentFileId = file.id;
+        
         this.editorManager.setValue(file.content);
         this.editorManager.setLanguage(file.language);
         this.ui.updateLanguageSelector(file.language);
@@ -373,6 +386,11 @@ class CodeForgeIDE {
         const breakpoints = this.editorManager.getBreakpoints(file.id);
         this.editorManager.updateBreakpointDecorations(file.id);
         this.ui.updateBreakpoints(breakpoints);
+        
+        // Clear debug line when switching files (only if not debugging)
+        if (!this.debugger.isDebugging) {
+            this.editorManager.clearDebugLine();
+        }
         
         this.refreshUI();
     }
@@ -566,6 +584,9 @@ class CodeForgeIDE {
         const needsInput = this.codeNeedsInput(content, file.language);
         
         if (needsInput) {
+            // Clear previous input
+            document.getElementById('stdin-input').value = '';
+            this.currentStdin = '';
             this.ui.openModal('input-modal');
             return;
         }
@@ -625,8 +646,14 @@ class CodeForgeIDE {
         const content = this.editorManager.getValue();
         this.fileManager.updateContent(file.id, content);
         
-        // Get breakpoints
+        // Get breakpoints from editor
         const breakpoints = this.editorManager.getBreakpoints(file.id);
+        
+        // Sync breakpoints to debugger
+        this.debugger.clearBreakpoints('current');
+        breakpoints.forEach(line => {
+            this.debugger.addBreakpoint('current', line);
+        });
         
         // Switch to debug panel
         this.ui.switchSidebarTab('debug');
@@ -677,15 +704,48 @@ class CodeForgeIDE {
             this.ui.logToConsole(result, 'info');
         } else if (language === 'python' && this.compiler.isPyodideReady) {
             try {
-                const result = await this.compiler.pyodide.runPythonAsync(expression);
-                if (result !== undefined && result !== null) {
-                    this.ui.logToConsole(String(result), 'info');
+                const result = await this.compiler.pyodide.runPythonAsync(`
+import sys
+from io import StringIO
+_stdout_backup = sys.stdout
+_stderr_backup = sys.stderr
+_capture_output = StringIO()
+sys.stdout = _capture_output
+sys.stderr = _capture_output
+try:
+    _result = eval(${JSON.stringify(expression)}, globals(), locals())
+    if _result is not None:
+        print(repr(_result))
+except:
+    try:
+        exec(${JSON.stringify(expression)}, globals(), locals())
+    except Exception as _e:
+        print(f"Error: {_e}", file=sys.stderr)
+finally:
+    sys.stdout = _stdout_backup
+    sys.stderr = _stderr_backup
+    _captured = _capture_output.getvalue()
+    _capture_output.close()
+_captured
+`);
+                if (result) {
+                    const output = result.trim();
+                    if (output) {
+                        const lines = output.split('\n');
+                        lines.forEach(line => {
+                            if (line.startsWith('Error:')) {
+                                this.ui.logToConsole(line.substring(7).trim(), 'error');
+                            } else {
+                                this.ui.logToConsole(line, 'info');
+                            }
+                        });
+                    }
                 }
             } catch (error) {
                 this.ui.logToConsole(error.message, 'error');
             }
         } else {
-            this.ui.logToConsole('请在调试模式下或 Python 环境中使用表达式求值', 'warn');
+            this.ui.logToConsole('表达式求值仅支持调试模式或 Python 环境', 'warn');
         }
     }
 }

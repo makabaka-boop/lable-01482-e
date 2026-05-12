@@ -15,13 +15,14 @@ class CompilerRuntime {
         this.onStatusChange = null;
         this.pythonStdout = [];
         this.pythonStderr = [];
+        this.needsRestart = false;
     }
 
     /**
      * Initialize Pyodide for Python execution
      */
     async initPyodide() {
-        if (this.isPyodideReady) return true;
+        if (this.isPyodideReady && !this.needsRestart) return true;
         
         try {
             this.updateStatus('正在加载 Python 运行时...');
@@ -47,6 +48,7 @@ class CompilerRuntime {
             await this.pyodide.loadPackage(['numpy', 'micropip']);
             
             this.isPyodideReady = true;
+            this.needsRestart = false;
             this.updateStatus('Python 运行时就绪');
             
             return true;
@@ -128,6 +130,16 @@ class CompilerRuntime {
         // Clear previous output
         this.pythonStdout = [];
         this.pythonStderr = [];
+        
+        // Restart Pyodide if needed (clean state)
+        if (this.needsRestart) {
+            this.isPyodideReady = false;
+            this.pyodide = null;
+            await this.initPyodide();
+            if (!this.isPyodideReady) {
+                return { success: false, error: 'Python 运行时未就绪' };
+            }
+        }
         
         try {
             // Setup stdin
@@ -338,12 +350,22 @@ sys.stdin = StdinWrapper(_stdin_lines)
     stop() {
         if (this.abortController) {
             this.abortController.abort();
+            this.abortController = null;
         }
         
         if (this.pyodide && this.isRunning) {
-            // Pyodide doesn't have a direct way to stop execution
-            // We'll need to reload it for a clean stop
-            this.pyodide.runPython('raise KeyboardInterrupt()');
+            // Mark Pyodide for restart (most reliable way to ensure clean stop)
+            this.needsRestart = true;
+            
+            // Try to interrupt current execution
+            try {
+                if (this.pyodide.runPythonAsync) {
+                    // Try to raise KeyboardInterrupt in a way that might stop execution
+                    this.pyodide.runPythonAsync('raise KeyboardInterrupt').catch(() => {});
+                }
+            } catch (e) {
+                // Ignore errors from stopping
+            }
         }
         
         this.isRunning = false;
