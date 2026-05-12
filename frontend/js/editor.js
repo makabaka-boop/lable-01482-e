@@ -9,10 +9,12 @@ class EditorManager {
         this.decorations = [];
         this.breakpoints = new Map(); // Map<fileId, Set<lineNumber>>
         this.currentDebugLine = null;
+        this.currentFileId = 'current';
         this.onContentChange = null;
         this.onBreakpointChange = null;
         this.onCursorChange = null;
         this.isInitialized = false;
+        this.loadBreakpoints();
     }
 
     /**
@@ -136,7 +138,7 @@ class EditorManager {
             if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN ||
                 e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS) {
                 const lineNumber = e.target.position.lineNumber;
-                this.toggleBreakpoint(lineNumber);
+                this.toggleBreakpoint(lineNumber, this.currentFileId);
             }
         });
     }
@@ -158,7 +160,7 @@ class EditorManager {
         // F9 - Toggle breakpoint
         this.editor.addCommand(monaco.KeyCode.F9, () => {
             const position = this.editor.getPosition();
-            this.toggleBreakpoint(position.lineNumber);
+            this.toggleBreakpoint(position.lineNumber, this.currentFileId);
         });
 
         // Ctrl+/ - Toggle comment
@@ -322,6 +324,7 @@ class EditorManager {
         }
         
         this.updateBreakpointDecorations(fileId);
+        this.saveBreakpoints();
         
         if (this.onBreakpointChange) {
             this.onBreakpointChange(fileId, Array.from(fileBreakpoints));
@@ -341,6 +344,7 @@ class EditorManager {
     clearBreakpoints(fileId = 'current') {
         this.breakpoints.delete(fileId);
         this.updateBreakpointDecorations(fileId);
+        this.saveBreakpoints();
         
         if (this.onBreakpointChange) {
             this.onBreakpointChange(fileId, []);
@@ -388,7 +392,7 @@ class EditorManager {
      */
     setDebugLine(lineNumber) {
         this.currentDebugLine = lineNumber;
-        this.updateBreakpointDecorations();
+        this.updateBreakpointDecorations(this.currentFileId);
         
         if (lineNumber !== null && this.editor) {
             this.editor.revealLineInCenter(lineNumber);
@@ -400,7 +404,7 @@ class EditorManager {
      */
     clearDebugLine() {
         this.currentDebugLine = null;
-        this.updateBreakpointDecorations();
+        this.updateBreakpointDecorations(this.currentFileId);
     }
 
     /**
@@ -479,5 +483,26 @@ class EditorManager {
         if (this.editor) {
             this.editor.layout();
         }
+    }
+
+    /**
+     * Save breakpoints to localStorage
+     */
+    saveBreakpoints() {
+        const data = {};
+        this.breakpoints.forEach((lines, fileId) => {
+            data[fileId] = Array.from(lines);
+        });
+        Utils.saveToStorage(CONFIG.storage.breakpoints, data);
+    }
+
+    /**
+     * Load breakpoints from localStorage
+     */
+    loadBreakpoints() {
+        const data = Utils.loadFromStorage(CONFIG.storage.breakpoints, {});
+        Object.keys(data).forEach(fileId => {
+            this.breakpoints.set(fileId, new Set(data[fileId]));
+        });
     }
 }

@@ -152,7 +152,8 @@ int main() {
     storage: {
         files: 'codeforge_files',
         settings: 'codeforge_settings',
-        recentFiles: 'codeforge_recent'
+        recentFiles: 'codeforge_recent',
+        breakpoints: 'codeforge_breakpoints'
     }
 };
 

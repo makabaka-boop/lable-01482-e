@@ -177,6 +177,29 @@ class FileManager {
     }
 
     /**
+     * Close file tab (without deleting)
+     */
+    closeFile(id) {
+        const file = this.files.get(id);
+        if (file) {
+            // If closed file was active, select another
+            if (this.activeFileId === id) {
+                const remaining = Array.from(this.files.keys());
+                this.activeFileId = remaining.length > 0 ? remaining[0] : null;
+            }
+            
+            this.saveToStorage();
+            
+            if (this.onFileChange) {
+                this.onFileChange('close', file);
+            }
+            
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Delete file
      */
     deleteFile(id) {
